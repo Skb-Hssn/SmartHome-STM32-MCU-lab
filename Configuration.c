@@ -163,9 +163,6 @@ void parseConfiguration(char* conf, struct Configuration* configuration, char re
             strcat(ret, temp);
             sprintf(temp, "%d", configuration->light[3]);
             strcat(ret, temp);
-
-            if(configuration->dayNight == 0) strcat(ret, " Night");
-            if(configuration->dayNight == 1) strcat(ret, " Day");
         }
 
         i = 0;

@@ -16,15 +16,21 @@ void sendChar(uint8_t x);
 
 uint8_t recieveChar(void);
 
+void configureHomeInit(void);
+
 void configureHome(void);
 
 void setPin(GPIO_TypeDef* gpio, int pin);
 
 void resetPin(GPIO_TypeDef* gpio, int pin);
 
+int isSetPin(GPIO_TypeDef* gpio, int pin);
+
 static char configuration[150];
 
 static int length = 0;
+
+static int initFlag = 1;
 
 static struct Configuration config;
 
@@ -63,6 +69,11 @@ void setPin(GPIO_TypeDef* gpio, int pin)
 void resetPin(GPIO_TypeDef* gpio, int pin)
 {
 	gpio->BSRR |= ((1U << pin) << 16);
+}
+
+int isSetPin(GPIO_TypeDef* gpio, int pin)
+{
+	return (gpio->IDR & (1 << pin)) > 0;
 }
 
 void sendChar(uint8_t data){
@@ -169,7 +180,7 @@ void stopPump(void)
 
 
 /*-------------Humidifier--------------*/
-/* PB8 */
+
 void runHumidifier()
 {
 	if(!humidifierRunnin) {
@@ -188,36 +199,68 @@ void stopHumidifier(void)
 
 
 /*--------------LIGHT--------------------*/
-/* PB9 */
+/*
+ * Input pins: PB4, PB3
+ * Input       0     0 -> Light0  -> PB9
+ *             0     1 -> Light1  -> PB5
+ *             1     0 -> Light2  -> PB6
+ *             1     1 -> Light3  -> PB7
+ **/
+
+
 void runLight()
 {
-	for(int i = 0; i < 4; i++) {
-		if(config.light[i] == 1 && !lightOn[i]) {
-			setPin(GPIOB, 4+i);
-			lightOn[i] = 1;
-			if(i == 0) {
-				setPin(GPIOB, 9);
-			}
-		}
-		
+	if(isSetPin(GPIOB, 10)) {
+		 if(isSetPin(GPIOB, 3) && isSetPin(GPIOB, 4)) {
+			 if(config.light[3]) {
+					 setPin(GPIOB, 7);	 
+			 } else {
+				   resetPin(GPIOB, 7);
+			 }
+			 resetPin(GPIOB, 5);
+			 resetPin(GPIOB, 6);
+			 resetPin(GPIOB, 9);
+		 
+		 } else if(isSetPin(GPIOB, 4)) {
+			 if(config.light[2]) {
+				 setPin(GPIOB, 6);
+			 } else {
+				 resetPin(GPIOB, 6);
+			 }
+			 resetPin(GPIOB, 5);
+			 resetPin(GPIOB, 7);
+			 resetPin(GPIOB, 9);
+		 
+		 } else if(isSetPin(GPIOB, 3)) {
+			 if(config.light[1]) {
+				 setPin(GPIOB, 5);
+			 } else {
+				 resetPin(GPIOB, 5);
+			 }
+			 resetPin(GPIOB, 6);
+			 resetPin(GPIOB, 7);
+			 resetPin(GPIOB, 9);
+		 } else {
+			 if(config.light[0]) {
+				 setPin(GPIOB, 9);
+			 } else {
+				 resetPin(GPIOB, 9);
+			 }
+			 resetPin(GPIOB, 5);
+			 resetPin(GPIOB, 7);
+			 resetPin(GPIOB, 6);
+		 }
+	} else {
+		resetPin(GPIOB, 5);
+		resetPin(GPIOB, 6);
+		resetPin(GPIOB, 7);
+		resetPin(GPIOB, 9);
 	}
 }
 
-void stopLight()
-{
-	for(int i = 0; i < 4; i++) {
-		if(config.light[i] == 0 && lightOn[i]) {
-			resetPin(GPIOB, 4+i);
-			lightOn[i] = 0;
-			if(i == 0) {
-				resetPin(GPIOB, 9);
-			}
-		}
-	}
-}
 
 
-void configureHome(void)
+void configureHomeInit(void)
 {
 	
 	/* TEMPARATURE */
@@ -266,10 +309,53 @@ void configureHome(void)
 	}
 	
 	runLight();
-	
-	stopLight();
 }
 
+/*
+ * Humidifier :
+ *			Input: PB12
+ *      Output: PB8
+ *
+ * Pump:
+ * 			Input: PB13
+ *      Output: PB2
+ *
+ *  Heater:
+ *      Input: PB14, PB15
+ *      Output: PB1
+ * 
+ * Cooler:
+ *      Input: PB14, PB15
+ *      Output: PB0
+ */
+
+void configureHome()
+{
+	if(isSetPin(GPIOB, 12)) {
+		runHumidifier();
+	} else {
+		stopHumidifier();
+	}
+	
+	if(isSetPin(GPIOB, 13)) {
+		runPump();
+	} else {
+		stopPump();
+	}
+	
+	if(isSetPin(GPIOB, 14) && isSetPin(GPIOB, 15)) {
+		runCooler();
+		stopHeater();
+	} else if(isSetPin(GPIOB, 14) || isSetPin(GPIOB, 15)) {
+		runHeater();
+		stopCooler();
+	} else {
+		stopCooler();
+		stopHeater();
+	}
+	
+	runLight();
+}
 
 int main()
 {
@@ -301,12 +387,20 @@ int main()
 			
 			if(retConfig[0] != 0) {
 				int j = 0;
-				while(retConfig[j] != '.') sendChar(retConfig[j]), j++;
+				while(retConfig[j] != '.') {
+					sendChar(retConfig[j]); 
+					j++;
+				}
 			}
 			
 			length = 0;
-			configureHome();
+			
+			if(initFlag) {
+				configureHomeInit();
+				initFlag = 0;
+			}
 		}
+		
+		configureHome();
 	}
-	
 }
